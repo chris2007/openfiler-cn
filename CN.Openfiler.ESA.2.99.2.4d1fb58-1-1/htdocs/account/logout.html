@@ -1,0 +1,42 @@
+﻿<?php
+
+/*
+ * Logout process
+ *
+ * Copyright (C) 2006 Voluna Software. All rights reserved.
+ *
+ */
+
+	require("pre.inc");
+
+//
+//
+
+if ((!$GLOBALS["authenticated"]) && (!$GLOBALS["userauthenticated"]))
+{
+	generic_header(array("title" => _("未登录系统！")));
+	dual_begin(array());
+
+	print("<h2>" . _("未登录系统！") . "</h2>\n");
+
+	print("<p><span class=\"red\">" . _("您已经退出系统，并且您还未登录！") . "</span>\n" .
+		_("请使用正确的身份验证来进入系统，你可以使用右面的界面进行登录。") . "</p>\n");
+
+	dual_middle(array());
+	show_account_details(array());
+	dual_end(array());
+	generic_footer(array());
+}
+else
+{
+	//
+	// Log the person out
+	// and redirect to the home page
+	//
+
+	setcookie("usercookie", "", time() - (24 * 3600), "/", "", 1);
+	setcookie("passcookie", "", time() - (24 * 3600), "/", "", 1);
+	header("Location: /");
+}
+
+?>

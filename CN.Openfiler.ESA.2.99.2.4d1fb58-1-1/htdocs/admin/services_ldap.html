@@ -1,0 +1,204 @@
+﻿<?php
+
+/*
+ *
+ *
+ * --------------------------------------------------------------------
+ * Copyright (c) 2001 - 2011 Openfiler Project.
+ * --------------------------------------------------------------------
+ *
+ * Openfiler is an Open Source SAN/NAS Appliance Software Distribution
+ *
+ * This file is part of Openfiler.
+ *
+ * Openfiler is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Openfiler is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Openfiler.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * --------------------------------------------------------------------
+ *
+ *
+ */
+
+    require("pre.inc");
+    include("authenticated.inc");
+
+	if ($action == "backup"){
+		$ldap = new LDAPServer();
+		$content = implode("\n",$ldap->backup());
+		header("Pragma: public");
+		header("Expires: 0");
+		header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
+		header("Content-Type: application/force-download");
+		header("Content-Type: application/octet-stream");
+		header("Content-Type: application/download");
+		header("Content-Disposition: attachment; filename=LDAP_backup.ldif;");
+		header("Content-Transfer-Encoding: binary");
+		$length = array_sum(count_chars($content));
+		header("Content-Length: ". $length);
+
+		print($content);
+		exit();
+	}
+	elseif ($action == "recover"){
+		if ($_FILES['recover']['name']) {
+			$lines = file($_FILES['recover']['tmp_name']);
+
+			//verify this is an ldif file
+			if (!preg_grep("/objectclass/i", $lines)){
+				$error[] = "文件不似乎是一个正确的LDIF备份文件。";
+				$error[] = "请确认文件中有LDIF文本。";
+			}
+			else{
+				// the basedn from slapd.conf must be the same as the LDIF that we are
+				// restoring.  The following block finds the LDIF basedn and recreates
+				// the ldap server with compatible settings.  This makes the restore
+				// much easier on the end user
+
+				//find out the LDIF's basedn
+				$dn = array_shift(preg_grep("/dn: /",$lines));
+				$dn = trim(str_replace("dn:","", $dn));
+
+				$ldap = new LDAPServer($dn, "cn=manager," . $dn);
+				$ldap->Create(); //create server with new settings
+				$ldap->Authconfig(); //fix authconfig to represent new LDAP settings
+				$status = $ldap->Restore($lines);
+				if ($status){
+					$error[] = $status;
+					$error[] = "恢复过程中检测到错误，请检查输入文件是否正确";
+				}
+			}
+		}
+
+	}
+	elseif ($action == "rebuild"){
+		$ldap = new LDAPServer();
+		$ldap->Create();
+	}
+	elseif ($action == "clear"){
+		if ($confirm == "yes"){
+			$ldap = new LDAPServer();
+			$ldap->Delete();
+
+			header("Location: ./services_ldap.html");
+			exit;
+		}
+		else
+			$showconfirm = "clear";
+	}
+
+	generic_header(array("title" => _("OPENFILER : 服务 : LDAP 设置")));
+	single_begin(array());
+
+?>
+
+<p>&nbsp;</p>
+
+<?php
+
+        nested_tab_begin("C_SERVICES_LDAP");
+        if ($showconfirm == "clear"){
+?>
+		<h5>确认清空 LDAP</h5>
+		你确定要删除的LDAP服务器吗？<br /><br />
+		[ <a href=?action=clear&confirm=yes>是</a> / <a href=services_ldap.html>否</a> ]
+<?php
+	}
+	else{
+		if ($error){
+			print("<p><font color=red>" . implode("<br />\n", $error) . "</font></p>");
+		}
+?>
+		<div align="center" style="width: 100%;">
+		<h3 align="center">本地 LDAP 设置</h3>
+		<?php printMessageBlock("info", "<p>下列选项只适用于本地 LDAP 服务器。</p>"); ?>
+
+
+                <form action="services_ldap.html" method="post">
+		<table border="0" cellpadding="8" cellspacing="2" width="50%">
+
+                <tr><td align="center" class="color_table_heading">备份 LDAP</td></tr>
+		<tr><td class="color_table_row1" align="center">
+
+			<p>此选项用于创建 LDAP 目录的 LDIF 备份。 从 LDAP 服务器备份目录交换格式文件数据。</p>
+			<input type="hidden" name="action" value="backup" />
+                </td></tr>
+                <tr><td align="center">
+			<input class="button" type="submit" name="submit" value=" 备份 LDAP" />
+		</td></tr>
+
+                </table>
+		 </form>
+                <hr/>
+                 <form enctype="multipart/form-data" action="services_ldap.html" method="post">
+                <table border="0" cellpadding="8" cellspacing="2" width="50%">
+
+                <tr><td align="center" class="color_table_heading">恢复 LDAP</td></tr>
+		<tr><td class="color_table_row2" align="center">
+
+			<p>这个选项应该用于恢复一个LDIF备份。在恢复时任何现有的LDAP数据将被删除。
+注：备份文件要与LDAP身份验证设置兼容。</p>
+
+                </td></tr>
+                <tr><td align="center">
+			<input class="button" type="submit" name="submit" value="恢复 LDAP" />
+		</td></tr>
+
+
+                </table>
+                 <input type="hidden" name="MAX_FILE_SIZE" value="200000" />
+			<input type="file" name="recover" size="30" /><br /><br />
+			<input type="hidden" name="action" value="recover" />
+		</form>
+                <hr/>
+                <form action="services_ldap.html" method="post">
+                <table border="0" cellpadding="8" cellspacing="2" width="50%">
+
+                <tr><td><br/></td></tr>
+                <tr><td align="center" class="color_table_heading">重建 LDAP</td></tr>
+		<tr><td class="color_table_row1" align="center">
+
+			<p>这个选项用于修复LDAP目录中的错误，执行该选择后会将LDAP清空，但是可以使LDAP恢复可用。</p><br />
+			<input type="hidden" name="action" value="rebuild" />
+
+                </td></tr>
+                <tr><td align="center">
+                        <input class="button" type="submit" name="submit" value="重建 LDAP" />
+		</td></tr>
+
+                </table>
+                </form>
+		<hr/>
+                <form action="services_ldap.html" method="post">
+                <table border="0" cellpadding="8" cellspacing="2" width="50%">
+
+                <tr><td><br/></td></tr>
+                <tr><td align="center" class="color_table_heading">清楚 LDAP 目录</td></tr>
+		<tr><td class="color_table_row2" align="center">
+
+			<p>LDAP服务器重新初始化，清除的LDAP目录，删除所有与LDAP目录相关的文件。</p><br />
+			<input type="hidden" name="action" value="clear" />
+                </td></tr>
+                <tr><td align="center">
+		<input class="button" type="submit" name="submit" value="清除 LDAP" />
+
+		</td></tr></table>
+                </form>
+		</div>
+<?php
+	}
+
+	nested_tab_end();
+
+	single_end(array());
+	generic_footer(array());
+?>
